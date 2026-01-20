@@ -56,8 +56,8 @@ const ExamCard = ({ exam }: { exam: Exam }) => {
       className="flex items-center justify-between px-4 py-6 transition-shadow bg-white rounded-full shadow-xs hover:shadow-md"
     >
       <div className="flex items-center gap-3">
-        <img src={exam.img} alt={exam.range} width={80} />
-        <h2 className="font-semibold text-gray-800">{exam.range}</h2>
+        <img src={exam.img} alt={exam.range} width={50} />
+        <h2 className="font-semibold text-[14px] text-gray-800">{exam.range}</h2>
       </div>
       <ChevronRight color="#191919" size={20} />
     </Link>
