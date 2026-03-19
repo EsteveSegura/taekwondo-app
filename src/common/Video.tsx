@@ -334,12 +334,15 @@ function SwitchVideoButton(props: React.ComponentProps<typeof Button>) {
   const dispatch = useMediaDispatch();
   const prevTimeRef = useRef<number>(0);
   const prevVideoIndexRef = useRef<number>(currentVideoIndex ?? 0);
+  const prevMediaPausedRef = useRef<boolean>(true);
   const currentTime = useMediaSelector((state) => state.mediaCurrentTime ?? 0);
+  const mediaPaused = useMediaSelector((state) => state.mediaPaused ?? true);
 
   const switchVideo = useCallback(() => {
     prevTimeRef.current = currentTime;
+    prevMediaPausedRef.current = mediaPaused;
     setCurrentVideoIndex?.((prevIndex) => (prevIndex + 1) % tul.video.length);
-  }, [currentTime, setCurrentVideoIndex, tul.video.length]);
+  }, [currentTime, mediaPaused, setCurrentVideoIndex, tul.video.length]);
 
   useEffect(() => {
     if (currentVideoIndex !== prevVideoIndexRef.current) {
@@ -347,7 +350,11 @@ function SwitchVideoButton(props: React.ComponentProps<typeof Button>) {
         type: MediaActionTypes.MEDIA_SEEK_REQUEST,
         detail: prevTimeRef.current,
       });
-      dispatch({ type: MediaActionTypes.MEDIA_PLAY_REQUEST });
+      dispatch({
+        type: prevMediaPausedRef.current
+          ? MediaActionTypes.MEDIA_PAUSE_REQUEST
+          : MediaActionTypes.MEDIA_PLAY_REQUEST,
+      });
       prevVideoIndexRef.current = currentVideoIndex ?? 0;
     }
   }, [currentVideoIndex, dispatch]);
