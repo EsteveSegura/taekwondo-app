@@ -24,9 +24,9 @@ import {
   Pause,
   Play,
   Plus,
+  RotateCw,
   SkipBack,
   SkipForward,
-  SwitchCamera,
 } from 'lucide-react';
 import { Button } from './Button';
 import { tuls, type Tul } from '@/consts/tuls';
@@ -365,7 +365,7 @@ function SwitchVideoButton(props: React.ComponentProps<typeof Button>) {
       {...props}
       onClick={switchVideo}
     >
-      <SwitchCamera />
+      <RotateCw />
     </Button>
   );
 }
