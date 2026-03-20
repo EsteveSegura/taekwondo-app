@@ -32,12 +32,24 @@ import { Button } from './Button';
 import { tuls, type Tul } from '@/consts/tuls';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/utils/cn';
-import { Drawer, DrawerContent, DrawerTrigger } from './Drawer';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from './Drawer';
 import { Slider } from './Slider';
+import { Switch } from './Switch';
+import { Label } from './Label';
+import { Separator } from './Separator';
+import { useSettingsStore } from '@/hooks/useSettingsStore';
 
 const CONTROLS_VISIBLE_TIMEOUT_MS = 3000;
 const LOADING_DELAY_MS = 500;
 const SPEEDS = [0.5, 1, 1.5, 2];
+const TIME_UPDATE_MS = 50;
 
 const getMovementIndex = (timestamps: number[], currentTime: number) =>
   Math.max(
@@ -141,13 +153,94 @@ function PlayerLoading({
 function Video(props: React.ComponentProps<'video'>) {
   const { tul, currentVideoIndex } = usePlayer();
   const mediaRef = useMediaRef();
+  const { loopVideo, pauseBetweenMovements } = useSettingsStore();
+  const src = useMemo(
+    () => tul.video[currentVideoIndex ?? 0],
+    [tul, currentVideoIndex]
+  );
+  const nextMovementTimestampRef = useRef<number | null>(null);
+  const timeUpdateIntervalRef = useRef<number | null>(null);
+
+  const updateNextMovementTimestamp = useCallback(
+    (video: HTMLVideoElement) => {
+      const { currentTime } = video;
+      const currentMovementIndex = getMovementIndex(
+        tul.movementTimestamps,
+        currentTime + (TIME_UPDATE_MS * 2) / 1000
+      );
+      nextMovementTimestampRef.current =
+        currentMovementIndex + 1 < tul.movementTimestamps.length
+          ? tul.movementTimestamps[currentMovementIndex + 1]
+          : null;
+    },
+    [tul.movementTimestamps]
+  );
+
+  const handleTimeUpdate = useCallback(
+    (video: HTMLVideoElement) => {
+      const { currentTime } = video;
+      if (
+        pauseBetweenMovements &&
+        nextMovementTimestampRef.current &&
+        currentTime + (TIME_UPDATE_MS * 2) / 1000 >
+          nextMovementTimestampRef.current
+      ) {
+        video.pause();
+      }
+    },
+    [pauseBetweenMovements]
+  );
+
+  const handlePlay = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (pauseBetweenMovements && !timeUpdateIntervalRef.current) {
+        updateNextMovementTimestamp(e.target as HTMLVideoElement);
+        timeUpdateIntervalRef.current = setInterval(() => {
+          handleTimeUpdate(e.target as HTMLVideoElement);
+        }, TIME_UPDATE_MS);
+      }
+      props.onPlay?.(e);
+    },
+    [
+      props,
+      handleTimeUpdate,
+      pauseBetweenMovements,
+      updateNextMovementTimestamp,
+    ]
+  );
+
+  const handlePause = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
+      props.onPause?.(e);
+    },
+    [props]
+  );
+
+  const handleSeeking = useCallback(
+    (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (pauseBetweenMovements) {
+        updateNextMovementTimestamp(e.target as HTMLVideoElement);
+      }
+      props.onSeeking?.(e);
+    },
+    [props, updateNextMovementTimestamp, pauseBetweenMovements]
+  );
 
   return (
     <video
       ref={mediaRef}
-      src={tul.video[currentVideoIndex ?? 0]}
+      src={src}
+      autoPlay
+      loop={loopVideo && !pauseBetweenMovements}
       preload="auto"
       slot="media"
+      onPlay={handlePlay}
+      onPause={handlePause}
+      onSeeking={handleSeeking}
       {...props}
     />
   );
@@ -233,19 +326,19 @@ function GoToMovementButton({
   const goToMovement = useCallback(() => {
     let newMovementIndex;
     const movements = tul.movementTimestamps.length;
-    const currentMovement = getMovementIndex(
+    const currentMovementIndex = getMovementIndex(
       tul.movementTimestamps,
       currentTime
     );
 
     if (direction === 'next') {
-      newMovementIndex = (currentMovement + 1) % movements;
+      newMovementIndex = (currentMovementIndex + 1) % movements;
     } else {
-      const currentMovementTime = tul.movementTimestamps[currentMovement];
+      const currentMovementTime = tul.movementTimestamps[currentMovementIndex];
       const repeatMovement = currentTime - currentMovementTime >= 1;
       newMovementIndex = repeatMovement
-        ? currentMovement
-        : (currentMovement - 1 + movements) % movements;
+        ? currentMovementIndex
+        : (currentMovementIndex - 1 + movements) % movements;
     }
 
     const newTime = tul.movementTimestamps[newMovementIndex];
@@ -253,6 +346,9 @@ function GoToMovementButton({
     dispatch({
       type: MediaActionTypes.MEDIA_SEEK_REQUEST,
       detail: newTime,
+    });
+    dispatch({
+      type: MediaActionTypes.MEDIA_PLAY_REQUEST,
     });
   }, [direction, dispatch, currentTime, tul.movementTimestamps]);
 
@@ -272,6 +368,7 @@ function GoToMovementButton({
 function MovementDisplay(props: React.ComponentProps<'p'>) {
   const { tul } = usePlayer();
   const currentTime = useMediaSelector((state) => state.mediaCurrentTime ?? 0);
+  const { showMovementName, showNameInKorean } = useSettingsStore();
 
   const currentMovement = useMemo(
     () => getMovementIndex(tul.movementTimestamps, currentTime),
@@ -280,7 +377,8 @@ function MovementDisplay(props: React.ComponentProps<'p'>) {
 
   return (
     <p data-slot="movement-display" {...props}>
-      {tul.name} - Movimiento {currentMovement + 1}
+      {(showNameInKorean ? tul.korean_name : tul.name) +
+        (showMovementName ? ` - Movimiento ${currentMovement + 1}` : '')}
     </p>
   );
 }
@@ -371,9 +469,16 @@ function SwitchVideoButton(props: React.ComponentProps<typeof Button>) {
 }
 
 function MoreButton(props: React.ComponentProps<typeof Button>) {
-  const [open, setOpen] = useState(false);
+  const {
+    setSettings,
+    showMovementName,
+    showNameInKorean,
+    pauseBetweenMovements,
+    loopVideo,
+  } = useSettingsStore();
+
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <Drawer>
       <DrawerTrigger asChild>
         <Button
           aria-label="Más opciones"
@@ -384,8 +489,58 @@ function MoreButton(props: React.ComponentProps<typeof Button>) {
           <MoreHorizontal />
         </Button>
       </DrawerTrigger>
-      <DrawerContent>
-        <div className="p-4 flex flex-col items-center justify-center gap-2">
+      <DrawerContent className="landscape:mx-auto landscape:max-w-sm">
+        <DrawerHeader className="sr-only">
+          <DrawerTitle>Opciones</DrawerTitle>
+          <DrawerDescription>
+            Configura la reproducción del video
+          </DrawerDescription>
+        </DrawerHeader>
+        <div className="p-4 flex flex-col gap-4 overflow-y-auto">
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="show-movement-name"
+              checked={showMovementName}
+              onCheckedChange={(checked) =>
+                setSettings({ showMovementName: checked })
+              }
+            />
+            <Label htmlFor="show-movement-name">Mostrar movimientos</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="show-name-in-korean"
+              checked={showNameInKorean}
+              onCheckedChange={(checked) =>
+                setSettings({ showNameInKorean: checked })
+              }
+            />
+            <Label htmlFor="show-name-in-korean">
+              Mostrar la forma en coreano
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="pause-between-movements"
+              checked={pauseBetweenMovements}
+              onCheckedChange={(checked) =>
+                setSettings({ pauseBetweenMovements: checked })
+              }
+            />
+            <Label htmlFor="pause-between-movements">
+              Pausar entre movimientos
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="loop-video"
+              checked={loopVideo}
+              disabled={pauseBetweenMovements}
+              onCheckedChange={(checked) => setSettings({ loopVideo: checked })}
+            />
+            <Label htmlFor="loop-video">Reproducir en bucle</Label>
+          </div>
+          <Separator />
           <PlayerPlaybackSpeed />
         </div>
       </DrawerContent>
@@ -415,9 +570,12 @@ function PlayerPlaybackSpeed({
   );
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2 w-full">
-      <div className="text-xl font-bold tracking-tighter text-center tabular-nums">
-        {mediaPlaybackRate.toFixed(2)}x
+    <div className="flex flex-col justify-center gap-2">
+      <div className="flex items-center justify-between">
+        <div className="font-medium">Cambiar velocidad</div>
+        <div className="font-bold tabular-nums">
+          {mediaPlaybackRate.toFixed(2)}x
+        </div>
       </div>
       <div className="flex items-center justify-stretch gap-4 w-full">
         <Button
@@ -459,7 +617,7 @@ function PlayerPlaybackSpeed({
             key={speed}
             variant={mediaPlaybackRate === speed ? 'primary' : 'outline'}
             size="sm"
-            className="flex-1 justify-between h-9 px-4"
+            className="flex-1 h-9 px-4"
             onClick={() => onPlaybackRateChange(speed)}
           >
             {speed}x
@@ -476,6 +634,7 @@ const LANDSCAPE_BUTTON_CLASSNAME =
 export function Player(props: PlayerProps) {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const lastSeekTimeRef = useRef<number>(0);
 
   return (
     <PlayerProvider
@@ -485,17 +644,18 @@ export function Player(props: PlayerProps) {
         onControlsVisibleChange: setControlsVisible,
         currentVideoIndex,
         onCurrentVideoIndexChange: setCurrentVideoIndex,
+        lastSeekTimeRef,
       }}
     >
-      <PlayerContainer className="flex flex-col gap-4 h-full portrait:-mx-4 landscape:absolute landscape:inset-0 landscape:bg-black">
+      <PlayerContainer className="flex flex-col gap-4 h-full portrait:-mx-4 landscape:absolute landscape:inset-0 landscape:bg-black landscape:z-50">
         <div className="bg-black flex-1 h-full relative">
-          <Video autoPlay className="size-full object-cover" />
+          <Video className="size-full object-cover" />
           <PlayerLoading />
         </div>
         <div
           data-slot="controls"
           data-visible={controlsVisible ? '' : undefined}
-          className="flex flex-col gap-2 px-6 transition-opacity duration-300 landscape:absolute landscape:bottom-0 landscape:inset-x-0 landscape:py-6 landscape:bg-linear-to-t landscape:from-black/80 landscape:to-transparent landscape:opacity-0 landscape:pointer-events-none landscape:data-visible:opacity-100 landscape:data-visible:pointer-events-auto"
+          className="flex flex-col gap-2 px-4 transition-opacity duration-300 landscape:absolute landscape:bottom-0 landscape:inset-x-0 landscape:p-6 landscape:bg-linear-to-t landscape:from-black/80 landscape:to-transparent landscape:opacity-0 landscape:pointer-events-none landscape:data-visible:opacity-100 landscape:data-visible:pointer-events-auto"
         >
           <div className="flex items-center justify-between gap-4">
             <GoToMovementButton
@@ -504,7 +664,7 @@ export function Player(props: PlayerProps) {
               variant="outline"
               className={LANDSCAPE_BUTTON_CLASSNAME}
             />
-            <MovementDisplay className="font-medium landscape:bg-black/40 landscape:text-white landscape:rounded-full landscape:px-3 landscape:py-1" />
+            <MovementDisplay className="font-medium text-pretty text-center landscape:bg-black/40 landscape:text-white landscape:rounded-full landscape:px-3 landscape:py-1" />
             <GoToMovementButton
               direction="next"
               size="icon-sm"
