@@ -36,7 +36,7 @@ import {
   Drawer,
   DrawerContent,
   DrawerDescription,
-  DrawerHeader,
+  DrawerPopup,
   DrawerTitle,
   DrawerTrigger,
 } from './Drawer';
@@ -479,24 +479,26 @@ function MoreButton(props: React.ComponentProps<typeof Button>) {
 
   return (
     <Drawer>
-      <DrawerTrigger asChild>
-        <Button
-          aria-label="Más opciones"
-          data-slot="more-button"
-          type="button"
-          {...props}
-        >
-          <MoreHorizontal />
-        </Button>
-      </DrawerTrigger>
-      <DrawerContent className="landscape:mx-auto landscape:max-w-sm">
-        <DrawerHeader className="sr-only">
-          <DrawerTitle>Opciones</DrawerTitle>
-          <DrawerDescription>
-            Configura la reproducción del video
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="p-4 flex flex-col gap-4 overflow-y-auto">
+      <DrawerTrigger
+        render={
+          <Button
+            aria-label="Más opciones"
+            data-slot="more-button"
+            type="button"
+            {...props}
+          >
+            <MoreHorizontal />
+          </Button>
+        }
+      />
+      <DrawerPopup className="landscape:mx-auto landscape:max-w-sm">
+        <DrawerContent className="flex flex-col gap-4">
+          <div className="sr-only">
+            <DrawerTitle>Opciones</DrawerTitle>
+            <DrawerDescription>
+              Configura la reproducción del video
+            </DrawerDescription>
+          </div>
           <div className="flex items-center space-x-2">
             <Switch
               id="show-movement-name"
@@ -542,8 +544,8 @@ function MoreButton(props: React.ComponentProps<typeof Button>) {
           </div>
           <Separator />
           <PlayerPlaybackSpeed />
-        </div>
-      </DrawerContent>
+        </DrawerContent>
+      </DrawerPopup>
     </Drawer>
   );
 }
